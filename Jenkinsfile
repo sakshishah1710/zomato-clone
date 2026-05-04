@@ -2,8 +2,7 @@ pipeline {
     agent any
 
     tools {
-        jdk 'jdk17'
-        nodejs 'node23'
+        nodejs 'node23'   // keep JDK only if configured properly
     }
 
     environment {
@@ -42,6 +41,21 @@ pipeline {
             }
         }
 
+        stage('Quality Gate') {
+            steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                }
+            }
+        }
+
+        stage('OWASP Scan') {
+            steps {
+                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit -n', odcInstallation: 'DP-Check'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+
         stage('Trivy Scan') {
             steps {
                 sh 'trivy fs . > trivy.txt'
@@ -56,9 +70,11 @@ pipeline {
 
         stage('Push to DockerHub') {
             steps {
-                withDockerRegistry(credentialsId: 'docker') {
-                    sh 'docker tag zomato sakshishah/zomato:latest'
-                    sh 'docker push sakshishah/zomato:latest'
+                script {
+                    withDockerRegistry(credentialsId: 'docker', url: 'https://index.docker.io/v1/') {
+                        sh 'docker tag zomato sakshishah/zomato:latest'
+                        sh 'docker push sakshishah/zomato:latest'
+                    }
                 }
             }
         }
@@ -69,6 +85,26 @@ pipeline {
                 sh 'docker rm zomato || true'
                 sh 'docker run -d -p 3000:3000 --name zomato sakshishah/zomato:latest'
             }
+        }
+    }
+
+    post {
+        always {
+            emailext attachLog: true,
+                subject: "'${currentBuild.result}'",
+                body: """
+                <html>
+                <body>
+                    <h2>Build Notification</h2>
+                    <p><b>Project:</b> ${env.JOB_NAME}</p>
+                    <p><b>Build Number:</b> ${env.BUILD_NUMBER}</p>
+                    <p><b>URL:</b> ${env.BUILD_URL}</p>
+                </body>
+                </html>
+                """,
+                to: 'shahsakshi1702@gmail.com',
+                mimeType: 'text/html',
+                attachmentsPattern: 'trivy.txt'
         }
     }
 }

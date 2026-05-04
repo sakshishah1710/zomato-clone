@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        nodejs 'node23'   // keep JDK only if configured properly
+        nodejs 'node23'
     }
 
     environment {
@@ -72,9 +72,8 @@ pipeline {
             steps {
                 script {
                     withDockerRegistry(credentialsId: 'docker', url: 'https://index.docker.io/v1/') {
-    sh 'docker tag zomato sakshidocker2002/zomato:latest'
-    sh 'docker push sakshidocker2002/zomato:latest'
-}
+                        sh 'docker tag zomato sakshidocker2002/zomato:latest'
+                        sh 'docker push sakshidocker2002/zomato:latest'
                     }
                 }
             }
@@ -84,7 +83,7 @@ pipeline {
             steps {
                 sh 'docker stop zomato || true'
                 sh 'docker rm zomato || true'
-                sh 'docker run -d -p 3000:3000 --name zomato sakshishah/zomato:latest'
+                sh 'docker run -d -p 3000:3000 --name zomato sakshidocker2002/zomato:latest'
             }
         }
     }

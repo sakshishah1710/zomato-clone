@@ -19,7 +19,7 @@ pipeline {
 
         stage('Git Checkout') {
             steps {
-                git 'https://github.com/sakshishah1710/zomato-clone.git'
+                git branch: 'main', url: 'https://github.com/sakshishah1710/zomato-clone.git'
             }
         }
 
@@ -72,8 +72,9 @@ pipeline {
             steps {
                 script {
                     withDockerRegistry(credentialsId: 'docker', url: 'https://index.docker.io/v1/') {
-                        sh 'docker tag zomato sakshishah/zomato:latest'
-                        sh 'docker push sakshishah/zomato:latest'
+    sh 'docker tag zomato sakshidocker2002/zomato:latest'
+    sh 'docker push sakshidocker2002/zomato:latest'
+}
                     }
                 }
             }

@@ -1,108 +1,103 @@
 pipeline {
     agent any
+
     tools {
         jdk 'jdk 17'
         nodejs 'node23'
     }
+
     environment {
-        SCANNER_HOME=tool 'sonar-scanner'
+        SCANNER_HOME = tool 'sonar-scanner'
     }
+
     stages {
-        stage ("clean workspace") {
+
+        stage('Clean Workspace') {
             steps {
                 cleanWs()
             }
         }
-        stage ("Git Checkout") {
+
+        stage('Git Checkout') {
             steps {
-                git 'https://github.com/sakshishah1710/zomato-clone.git'
+                git branch: 'main',
+                url: 'https://github.com/sakshishah1710/zomato-clone.git'
             }
         }
-        stage("Sonarqube Analysis"){
-            steps{
-                withSonarQubeEnv('sonar-server') {
-                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=zomato \
-                    -Dsonar.projectKey=zomato '''
-                }
+
+        stage('Install NPM Dependencies') {
+            steps {
+                sh 'npm install'
             }
         }
-        stage("Code Quality Gate"){
-           steps {
-                script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token' 
-                }
-            } 
-        }
-        stage("Install NPM Dependencies") {
+
+        stage('Build Application') {
             steps {
-                sh "npm install"
+                sh 'npm run build'
             }
         }
-        stage('OWASP FS SCAN') {
+
+        stage('Build Docker Image') {
             steps {
-                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit -n', odcInstallation: 'DP-Check'
-                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-    }
-}
-        stage ("Trivy File Scan") {
-            steps {
-                sh "trivy fs . > trivy.txt"
+                sh 'docker build -t zomato .'
             }
         }
-        stage ("Build Docker Image") {
-            steps {
-                sh "docker build -t zomato ."
-            }
-        }
-        stage ("Tag & Push to DockerHub") {
+
+        stage('Tag & Push Docker Image') {
             steps {
                 script {
-                    withDockerRegistry(credentialsId: 'docker') {
-                        sh "docker tag zomato sakshishah/zomato:latest"
-                    sh "docker push sakshishah/zomato:latest"
+                    withDockerRegistry(
+                        credentialsId: 'docker',
+                        url: 'https://index.docker.io/v1/'
+                    ) {
+
+                        sh 'docker tag zomato sakshidocker2002/zomato:latest'
+                        sh 'docker push sakshidocker2002/zomato:latest'
                     }
                 }
             }
         }
-        stage('Docker Scout Image') {
+
+        stage('Deploy Container') {
             steps {
-                script{
-                   withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){
-                       sh 'docker-scout quickview sakshishah/zomato:latest'
-                       sh 'docker-scout cves sakshishah/zomato:latest'
-                       sh 'docker-scout recommendations sakshishah/zomato:latest'
-                   }
-                }
-            }
-        }
-        stage ("Deploy to Container") {
-            steps {
-                sh 'docker run -d --name zomato -p 3000:3000 sakshishah/zomato:latest'
+                sh 'docker stop zomato || true'
+                sh 'docker rm zomato || true'
+
+                sh '''
+                docker run -d \
+                --name zomato \
+                -p 3000:3000 \
+                sakshidocker2002/zomato:latest
+                '''
             }
         }
     }
+
     post {
-    always {
-        emailext attachLog: true,
-            subject: "'${currentBuild.result}'",
-            body: """
+        always {
+            emailext(
+                attachLog: true,
+                subject: "${currentBuild.result}: ${env.JOB_NAME}",
+                body: """
                 <html>
                 <body>
-                    <div style="background-color: #FFA07A; padding: 10px; margin-bottom: 10px;">
-                        <p style="color: white; font-weight: bold;">Project: ${env.JOB_NAME}</p>
-                    </div>
-                    <div style="background-color: #90EE90; padding: 10px; margin-bottom: 10px;">
-                        <p style="color: white; font-weight: bold;">Build Number: ${env.BUILD_NUMBER}</p>
-                    </div>
-                    <div style="background-color: #87CEEB; padding: 10px; margin-bottom: 10px;">
-                        <p style="color: white; font-weight: bold;">URL: ${env.BUILD_URL}</p>
-                    </div>
+
+                    <h2>Jenkins Build Notification</h2>
+
+                    <p><b>Project:</b> ${env.JOB_NAME}</p>
+
+                    <p><b>Build Number:</b> ${env.BUILD_NUMBER}</p>
+
+                    <p><b>Build Status:</b> ${currentBuild.result}</p>
+
+                    <p><b>Build URL:</b> ${env.BUILD_URL}</p>
+
                 </body>
                 </html>
-            """,
-            to: 'shahsakshi1702@gmail.com',
-            mimeType: 'text/html',
-            attachmentsPattern: 'trivy.txt'
+                """,
+                to: 'shahsakshi1702@gmail.com',
+                mimeType: 'text/html'
+            )
         }
     }
 }
